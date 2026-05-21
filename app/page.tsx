@@ -1,65 +1,156 @@
-import Image from "next/image";
+"use client";
+import { useStore } from "@/lib/store";
+import StatCard from "@/components/StatCard";
+import AttendanceChart from "@/components/AttendanceChart";
+import TopicPieChart from "@/components/TopicPieChart";
+import { Building2, BookOpen, Users, TrendingUp, ClipboardList } from "lucide-react";
+import Link from "next/link";
 
-export default function Home() {
+export default function DashboardPage() {
+  const { departments, topics, attendees } = useStore();
+
+  const totalStaff = departments.reduce((s, d) => s + d.staffCount, 0);
+  const uniqueAttendees = new Set(attendees.map((a) => a.employeeId)).size;
+  const completionRate =
+    totalStaff > 0 ? Math.round((uniqueAttendees / totalStaff) * 100) : 0;
+
+  const recentAttendees = [...attendees]
+    .sort((a, b) => new Date(b.signedAt).getTime() - new Date(a.signedAt).getTime())
+    .slice(0, 8);
+
+  const topTopics = topics
+    .map((t) => ({
+      ...t,
+      count: attendees.filter((a) => a.topicId === t.id).length,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
+        <p className="text-gray-500 text-sm mt-1">Overview of all training activity</p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard
+          label="Departments"
+          value={departments.length}
+          icon={Building2}
+          color="bg-indigo-500"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+        <StatCard
+          label="Training Topics"
+          value={topics.length}
+          icon={BookOpen}
+          color="bg-amber-500"
+        />
+        <StatCard
+          label="Total Sign-Ins"
+          value={attendees.length}
+          icon={ClipboardList}
+          color="bg-emerald-500"
+        />
+        <StatCard
+          label="Completion Rate"
+          value={`${completionRate}%`}
+          icon={TrendingUp}
+          color="bg-pink-500"
+          sub={`${uniqueAttendees} of ${totalStaff} staff`}
+        />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div className="lg:col-span-2">
+          <AttendanceChart />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div>
+          <TopicPieChart />
         </div>
-      </main>
+      </div>
+
+      {/* Bottom panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Recent sign-ins */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-700">Recent Sign-Ins</h3>
+            <Link href="/attendees" className="text-xs text-indigo-600 hover:underline">
+              View all
+            </Link>
+          </div>
+          {recentAttendees.length === 0 ? (
+            <p className="text-gray-400 text-sm py-4 text-center">No sign-ins yet</p>
+          ) : (
+            <ul className="space-y-2">
+              {recentAttendees.map((a) => {
+                const topic = topics.find((t) => t.id === a.topicId);
+                const dept = departments.find((d) => d.id === a.departmentId);
+                return (
+                  <li key={a.id} className="flex items-center gap-3 text-sm">
+                    <div
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ background: dept?.color ?? "#6366f1" }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-700 truncate block">{a.name}</span>
+                      <span className="text-gray-400 text-xs truncate block">
+                        {topic?.title ?? "Unknown topic"} · {dept?.name ?? ""}
+                      </span>
+                    </div>
+                    <span className="text-gray-400 text-xs shrink-0">
+                      {new Date(a.signedAt).toLocaleDateString()}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Top topics */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-700">Top Training Topics</h3>
+            <Link href="/topics" className="text-xs text-indigo-600 hover:underline">
+              View all
+            </Link>
+          </div>
+          {topTopics.length === 0 ? (
+            <p className="text-gray-400 text-sm py-4 text-center">No topics yet</p>
+          ) : (
+            <ul className="space-y-3">
+              {topTopics.map((t) => {
+                const dept = departments.find((d) => d.id === t.departmentId);
+                const pct =
+                  dept && dept.staffCount > 0
+                    ? Math.round((t.count / dept.staffCount) * 100)
+                    : 0;
+                return (
+                  <li key={t.id}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium text-gray-700 truncate">{t.title}</span>
+                      <span className="text-gray-500 shrink-0 ml-2">{t.count} attendees</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className="h-1.5 rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(pct, 100)}%`,
+                          background: dept?.color ?? "#6366f1",
+                        }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
