@@ -83,7 +83,9 @@ export async function POST(request: Request) {
 
     // Send password setup email
     try {
-      const resetLink = await adminAuth.generatePasswordResetLink(email);
+      const resetLink = await adminAuth.generatePasswordResetLink(email, {
+        url: "https://training-register-delta.vercel.app/",
+      });
       await sendWelcomeEmail(email, resetLink);
     } catch (emailErr: unknown) {
       const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
