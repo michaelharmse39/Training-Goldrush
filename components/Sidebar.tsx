@@ -15,6 +15,7 @@ import {
   TrendingUp,
   HelpCircle,
   CalendarDays,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -47,7 +48,7 @@ const staffNav = [
   { href: "/training-sessions", label: "Training Sessions", icon: CalendarDays },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const path = usePathname();
   const router = useRouter();
   const { user, role, signOut } = useAuth();
@@ -70,11 +71,16 @@ export default function Sidebar() {
   return (
     <aside className="w-64 h-full bg-gray-900 text-white flex flex-col">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-700">
-        <GraduationCap className="w-7 h-7 text-indigo-400" />
-        <div>
+        <GraduationCap className="w-7 h-7 text-indigo-400 shrink-0" />
+        <div className="flex-1">
           <p className="font-bold text-sm leading-tight">Training Register</p>
           <p className="text-xs text-gray-400">Gold Rush Group</p>
         </div>
+        {onClose && (
+          <button onClick={onClose} className="lg:hidden text-gray-400 hover:text-white" aria-label="Close menu">
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => {

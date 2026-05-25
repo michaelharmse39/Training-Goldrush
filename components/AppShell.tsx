@@ -1,7 +1,7 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Menu } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
 import Sidebar from "@/components/Sidebar";
@@ -17,6 +17,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, pendingStep } = useAuth();
   const path = usePathname();
   const router = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Close sidebar on route change (mobile tap nav link)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [path]);
 
   const isPublic = PUBLIC_PATHS.includes(path);
   const isTotpPath = TOTP_PATHS.includes(path);
@@ -72,10 +78,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <StoreProvider>
       <LoadingOverlay />
       <div className="flex h-screen">
-        <div className="print:hidden shrink-0">
-          <Sidebar />
+        {/* Mobile top bar */}
+        <div className="lg:hidden print:hidden fixed top-0 left-0 right-0 z-30 h-14 bg-gray-900 flex items-center px-4 gap-3">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="text-gray-300 hover:text-white"
+            aria-label="Open menu"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+          <GraduationCap className="w-5 h-5 text-indigo-400" />
+          <span className="text-white text-sm font-bold">Training Register</span>
         </div>
-        <main className="flex-1 overflow-auto">{children}</main>
+
+        {/* Backdrop */}
+        {sidebarOpen && (
+          <div
+            className="lg:hidden fixed inset-0 z-40 bg-black/50"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
+        <div
+          className={`print:hidden shrink-0 fixed inset-y-0 left-0 z-50 transition-transform duration-300 lg:static lg:translate-x-0 ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <Sidebar onClose={() => setSidebarOpen(false)} />
+        </div>
+
+        <main className="flex-1 overflow-auto pt-14 lg:pt-0">{children}</main>
       </div>
     </StoreProvider>
   );
