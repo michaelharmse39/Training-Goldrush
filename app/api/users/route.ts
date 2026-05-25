@@ -8,13 +8,20 @@ function randomPassword() {
 
 async function sendWelcomeEmail(to: string, resetLink: string) {
   const apiKey = process.env.SENDGRID_API_KEY;
-  const from = process.env.SMTP_FROM ?? "Training Register <noreply@goldrushgroup.co.za>";
+  const fromRaw = process.env.SMTP_FROM ?? "noreply@goldrushgroup.co.za";
 
   if (!apiKey) {
     console.log(`[PASSWORD SETUP LINK for ${to}]: ${resetLink}`);
     return;
   }
 
+  // Parse "Name <email>" format into SendGrid object format
+  const match = fromRaw.match(/^(.*?)\s*<(.+?)>$/);
+  const from = match
+    ? { name: match[1].trim(), email: match[2].trim() }
+    : { email: fromRaw.trim() };
+
+  console.log(`[SendGrid] Sending welcome email to ${to} from`, JSON.stringify(from));
   sgMail.setApiKey(apiKey);
 
   await sgMail.send({
@@ -78,9 +85,10 @@ export async function POST(request: Request) {
     try {
       const resetLink = await adminAuth.generatePasswordResetLink(email);
       await sendWelcomeEmail(email, resetLink);
-    } catch (emailErr) {
-      console.error("Failed to send welcome email:", emailErr);
-      // Don't fail the request — user was created successfully
+    } catch (emailErr: unknown) {
+      const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+      const body = (emailErr as { response?: { body?: unknown } })?.response?.body;
+      console.error("Failed to send welcome email:", msg, body ? JSON.stringify(body) : "");
     }
 
     return NextResponse.json({
