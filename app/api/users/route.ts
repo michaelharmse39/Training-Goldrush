@@ -1,29 +1,23 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import nodemailer from "nodemailer";
+import sgMail from "@sendgrid/mail";
 
 function randomPassword() {
-  // Never shown to anyone — user will set their own via the reset link
   return Math.random().toString(36).slice(2) + Math.random().toString(36).toUpperCase().slice(2) + "!9";
 }
 
 async function sendWelcomeEmail(to: string, resetLink: string) {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT ?? "587");
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.SMTP_FROM ?? "Training Register <noreply@goldrushgroup.co.za>";
 
-  if (!host || !user || !pass) {
+  if (!apiKey) {
     console.log(`[PASSWORD SETUP LINK for ${to}]: ${resetLink}`);
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host, port, secure: port === 465, auth: { user, pass },
-  });
+  sgMail.setApiKey(apiKey);
 
-  await transporter.sendMail({
+  await sgMail.send({
     from,
     to,
     subject: "Set up your Training Register password",

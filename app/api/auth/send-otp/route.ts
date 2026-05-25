@@ -1,32 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
-import nodemailer from "nodemailer";
+import sgMail from "@sendgrid/mail";
 
 function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 async function sendEmail(to: string, otp: string) {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT ?? "587");
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.SMTP_FROM ?? "Training Register <noreply@goldrushgroup.co.za>";
 
-  if (!host || !user || !pass) {
-    // In development without SMTP: log OTP to console
+  if (!apiKey) {
     console.log(`[OTP for ${to}]: ${otp}`);
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-  });
+  sgMail.setApiKey(apiKey);
 
-  await transporter.sendMail({
+  await sgMail.send({
     from,
     to,
     subject: "Your Training Register verification code",
@@ -50,9 +41,8 @@ export async function POST(req: NextRequest) {
   }
 
   const otp = generateOtp();
-  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+  const expiresAt = Date.now() + 10 * 60 * 1000;
 
-  // Store OTP in Firestore (keyed by email, overwrite any previous)
   const key = email.toLowerCase().replace(/[^a-z0-9]/g, "_");
   await adminDb.collection("pendingOtps").doc(key).set({ email, otp, expiresAt });
 
@@ -60,7 +50,6 @@ export async function POST(req: NextRequest) {
     await sendEmail(email, otp);
   } catch (err) {
     console.error("Failed to send OTP email:", err);
-    // Still return success — OTP is logged to console in dev
   }
 
   return NextResponse.json({ sent: true });
