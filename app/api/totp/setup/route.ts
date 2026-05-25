@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { authenticator } from "otplib";
+import { generateSecret, generateURI } from "otplib";
 import QRCode from "qrcode";
 
 export async function POST(req: NextRequest) {
@@ -17,8 +17,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
-  const secret = authenticator.generateSecret();
-  const uri = authenticator.keyuri(email, "Training Register – Gold Rush Group", secret);
+  const secret = generateSecret();
+  const uri = generateURI({ issuer: "Training Register – Gold Rush Group", label: email, secret });
   const qrCode = await QRCode.toDataURL(uri);
 
   // Store pending secret (not yet confirmed)

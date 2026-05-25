@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { authenticator } from "otplib";
+import { verifySync } from "otplib";
 
 export async function POST(req: NextRequest) {
   const token = req.headers.get("Authorization")?.replace("Bearer ", "");
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const secret = data?.totpSecretPending;
   if (!secret) return NextResponse.json({ error: "No pending TOTP setup found" }, { status: 400 });
 
-  const valid = authenticator.verify({ token: code.trim(), secret });
+  const { valid } = verifySync({ token: code.trim(), secret });
   if (!valid) return NextResponse.json({ error: "Incorrect code. Make sure your authenticator app is synced." }, { status: 400 });
 
   // Promote pending secret to active

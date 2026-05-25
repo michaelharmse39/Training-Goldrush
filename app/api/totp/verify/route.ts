@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { authenticator } from "otplib";
+import { verifySync } from "otplib";
 
 export async function POST(req: NextRequest) {
   const token = req.headers.get("Authorization")?.replace("Bearer ", "");
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const secret = snap.data()?.totpSecret;
   if (!secret) return NextResponse.json({ error: "TOTP not configured for this account" }, { status: 400 });
 
-  const valid = authenticator.verify({ token: code.trim(), secret });
+  const { valid } = verifySync({ token: code.trim(), secret });
   if (!valid) return NextResponse.json({ error: "Incorrect code. Check your authenticator app and try again." }, { status: 400 });
 
   return NextResponse.json({ success: true });
