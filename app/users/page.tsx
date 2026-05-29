@@ -261,35 +261,49 @@ export default function UsersPage() {
                   <thead>
                     <tr className="border-b border-amber-200 bg-amber-100/50">
                       <th className="text-left px-4 py-3 font-medium text-amber-800">Email</th>
+                      <th className="text-left px-4 py-3 font-medium text-amber-800">Department</th>
                       <th className="text-left px-4 py-3 font-medium text-amber-800">Registered</th>
                       <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingUsers.map((u) => (
-                      <tr key={u.uid} className="border-b border-amber-100 last:border-0">
-                        <td className="px-4 py-3 text-gray-900">{u.email}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500">
-                          {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-ZA") : "—"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 justify-end">
-                            <button
-                              onClick={() => handleApprove(u.uid, true)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" /> Approve
-                            </button>
-                            <button
-                              onClick={() => handleDelete(u.uid)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium"
-                            >
-                              <XCircle className="w-3.5 h-3.5" /> Reject
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {pendingUsers.map((u) => {
+                      const dept = departments.find((d) => d.id === u.departmentId);
+                      return (
+                        <tr key={u.uid} className="border-b border-amber-100 last:border-0">
+                          <td className="px-4 py-3 text-gray-900">{u.email}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {dept ? (
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dept.color }} />
+                                {dept.name}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-ZA") : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 justify-end">
+                              <button
+                                onClick={() => handleApprove(u.uid, true)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" /> Approve
+                              </button>
+                              <button
+                                onClick={() => handleDelete(u.uid)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium"
+                              >
+                                <XCircle className="w-3.5 h-3.5" /> Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

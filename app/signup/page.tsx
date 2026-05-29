@@ -1,9 +1,17 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GraduationCap, ArrowLeft, Mail, Lock, CheckCircle, Eye, EyeOff } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const STORAGE_KEY =
+  typeof window !== "undefined"
+    ? `sb-${new URL(SUPABASE_URL).hostname.split(".")[0]}-auth-token`
+    : "sb-auth-token";
+
+interface Dept { id: string; name: string; }
 
 type Step = "form" | "otp" | "creating";
 
@@ -14,11 +22,23 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [departments, setDepartments] = useState<Dept[]>([]);
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  useEffect(() => {
+    fetch(
+      `${SUPABASE_URL}/rest/v1/departments?select=id,name&order=name.asc`,
+      { headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` } }
+    )
+      .then((r) => r.json())
+      .then((rows: Dept[]) => setDepartments(rows))
+      .catch(() => {});
+  }, []);
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,34 +78,63 @@ export default function SignupPage() {
       return;
     }
 
-    // Create Supabase auth account
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({ email, password });
-    if (signUpError || !authData.user) {
-      setError(
-        signUpError?.message.includes("already registered")
-          ? "An account with this email already exists."
-          : (signUpError?.message ?? "Failed to create account.")
-      );
+    // Create Supabase auth account via direct REST
+    const signupRes = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY },
+      body: JSON.stringify({ email, password }),
+    });
+    const signupData = await signupRes.json() as { access_token?: string; id?: string; msg?: string; message?: string };
+
+    if (!signupRes.ok) {
+      const msg = signupData.msg ?? signupData.message ?? "Failed to create account.";
+      setError(msg.toLowerCase().includes("already") ? "An account with this email already exists." : msg);
+      setLoading(false);
+      return;
+    }
+
+    // Get access token — present when email confirmation is disabled
+    let token = signupData.access_token;
+
+    // If no token (email confirmation enabled), sign in immediately to obtain one
+    if (!token && signupData.id) {
+      const loginRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY },
+        body: JSON.stringify({ email, password }),
+      });
+      if (loginRes.ok) {
+        const loginData = await loginRes.json() as { access_token?: string };
+        token = loginData.access_token;
+      }
+    }
+
+    if (!token) {
+      setError("Account created but could not obtain session. Please contact an administrator.");
       setLoading(false);
       return;
     }
 
     // Create user profile record via API
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
     const completeRes = await fetch("/api/auth/complete-signup", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ departmentId: departmentId || null }),
     });
-    const completeData = await completeRes.json();
-    if (!completeRes.ok) {
+    const completeData = await completeRes.json() as { error?: string };
+    if (!completeRes.ok && completeData.error !== "Account already registered") {
       setError(completeData.error ?? "Failed to complete registration.");
       setLoading(false);
       return;
     }
 
-    // Sign the user out — they must wait for approval
-    await supabase.auth.signOut();
+    // Sign out — user must wait for approval before logging in
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${token}` },
+    }).catch(() => {});
+    if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY);
+
     setLoading(false);
     router.replace("/pending-approval");
   };
@@ -147,6 +196,20 @@ export default function SignupPage() {
                       {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                  <select
+                    value={departmentId}
+                    onChange={(e) => setDepartmentId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="">— select your department —</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
                 </div>
                 {error && <p className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
                 <button type="submit" disabled={loading} className="w-full py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">

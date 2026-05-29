@@ -8,7 +8,7 @@ import Sidebar from "@/components/Sidebar";
 import LoadingOverlay from "@/components/LoadingOverlay";
 
 // Routes that don't require authentication
-const PUBLIC_PATHS = ["/login", "/signup", "/pending-approval"];
+const PUBLIC_PATHS = ["/login", "/signup", "/pending-approval", "/update-password"];
 
 // Routes that a logged-in user with a pending TOTP step can access
 const TOTP_PATHS = ["/setup-totp", "/verify-totp"];
