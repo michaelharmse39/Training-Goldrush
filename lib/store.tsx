@@ -1,57 +1,49 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { Department, Topic, Attendee, Gender, Equity, AgeGroup } from "./types";
-import { db } from "./firebase";
-import {
-  collection, getDocs, addDoc, updateDoc, deleteDoc,
-  doc, query, orderBy, DocumentData,
-} from "firebase/firestore";
+import { supabase } from "./supabase";
 
-// ── Row mappers (Firestore data → TS types) ──────────────────
-
-function mapDept(id: string, r: DocumentData): Department {
-  return { id, name: r.name, color: r.color, staffCount: r.staffCount };
+function mapDept(r: Record<string, unknown>): Department {
+  return { id: r.id as string, name: r.name as string, color: r.color as string, staffCount: r.staff_count as number };
 }
 
-function mapTopic(id: string, r: DocumentData): Topic {
+function mapTopic(r: Record<string, unknown>): Topic {
   return {
-    id,
-    departmentId: r.departmentId,
-    title: r.title,
-    subject: r.subject ?? "",
-    description: r.description ?? "",
-    date: r.date ?? "",
-    weekEnding: r.weekEnding ?? "",
-    time: r.time ?? "",
-    duration: r.duration ?? "",
-    location: r.location ?? "",
-    lessonPlanRef: r.lessonPlanRef ?? "",
-    trainer: r.trainer ?? "",
-    trainerSignature: r.trainerSignature ?? "",
-    createdAt: r.createdAt ?? "",
+    id: r.id as string,
+    departmentId: r.department_id as string ?? "",
+    title: r.title as string,
+    subject: r.subject as string ?? "",
+    description: r.description as string ?? "",
+    date: r.date as string ?? "",
+    weekEnding: r.week_ending as string ?? "",
+    time: r.time as string ?? "",
+    duration: r.duration as string ?? "",
+    location: r.location as string ?? "",
+    lessonPlanRef: r.lesson_plan_ref as string ?? "",
+    trainer: r.trainer as string ?? "",
+    trainerSignature: r.trainer_signature as string ?? "",
+    createdAt: r.created_at as string ?? "",
   };
 }
 
-function mapAttendee(id: string, r: DocumentData): Attendee {
+function mapAttendee(r: Record<string, unknown>): Attendee {
   return {
-    id,
-    topicId: r.topicId,
-    departmentId: r.departmentId,
-    name: r.name,
-    employeeId: r.employeeId,
-    jobTitle: r.jobTitle ?? "",
+    id: r.id as string,
+    topicId: r.topic_id as string ?? "",
+    departmentId: r.department_id as string ?? "",
+    name: r.name as string,
+    employeeId: r.employee_id as string,
+    jobTitle: r.job_title as string ?? "",
     gender: (r.gender as Gender) ?? "",
     equity: (r.equity as Equity) ?? "",
-    passportId: r.passportId ?? "",
-    ageGroup: (r.ageGroup as AgeGroup) ?? "",
-    disabled: r.disabled ?? false,
-    learnership: r.learnership ?? false,
-    signature: r.signature ?? "",
-    signedAt: r.signedAt ?? "",
+    passportId: r.passport_id as string ?? "",
+    ageGroup: (r.age_group as AgeGroup) ?? "",
+    disabled: r.disabled as boolean ?? false,
+    learnership: r.learnership as boolean ?? false,
+    signature: r.signature as string ?? "",
+    signedAt: r.signed_at as string ?? "",
   };
 }
-
-// ── Context type ─────────────────────────────────────────────
 
 interface StoreContextType {
   departments: Department[];
@@ -71,8 +63,6 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | null>(null);
 
-// ── Provider ──────────────────────────────────────────────────
-
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -84,16 +74,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [dSnap, tSnap, aSnap] = await Promise.all([
-        getDocs(query(collection(db, "departments"), orderBy("createdAt"))),
-        getDocs(query(collection(db, "topics"), orderBy("createdAt"))),
-        getDocs(query(collection(db, "attendees"), orderBy("signedAt"))),
+      const [{ data: d, error: de }, { data: t, error: te }, { data: a, error: ae }] = await Promise.all([
+        supabase.from("departments").select("*").order("created_at"),
+        supabase.from("topics").select("*").order("created_at"),
+        supabase.from("attendees").select("*").order("signed_at"),
       ]);
-      setDepartments(dSnap.docs.map((d) => mapDept(d.id, d.data())));
-      setTopics(tSnap.docs.map((d) => mapTopic(d.id, d.data())));
-      setAttendees(aSnap.docs.map((d) => mapAttendee(d.id, d.data())));
+      if (de || te || ae) throw new Error((de ?? te ?? ae)!.message);
+      setDepartments((d ?? []).map(mapDept));
+      setTopics((t ?? []).map(mapTopic));
+      setAttendees((a ?? []).map(mapAttendee));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : JSON.stringify(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -101,125 +92,76 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // ── Departments ──
-
   const addDepartment = async (d: Omit<Department, "id">) => {
-    try {
-      const ref = await addDoc(collection(db, "departments"), {
-        name: d.name, color: d.color, staffCount: d.staffCount,
-        createdAt: new Date().toISOString(),
-      });
-      setDepartments((prev) => [...prev, { id: ref.id, ...d }]);
-    } catch (e) { console.error(e); }
+    const { data, error } = await supabase.from("departments").insert({ name: d.name, color: d.color, staff_count: d.staffCount }).select().single();
+    if (!error && data) setDepartments((prev) => [...prev, mapDept(data)]);
   };
 
   const updateDepartment = async (d: Department) => {
-    try {
-      await updateDoc(doc(db, "departments", d.id), { name: d.name, color: d.color, staffCount: d.staffCount });
-      setDepartments((prev) => prev.map((x) => (x.id === d.id ? d : x)));
-    } catch (e) { console.error(e); }
+    const { error } = await supabase.from("departments").update({ name: d.name, color: d.color, staff_count: d.staffCount }).eq("id", d.id);
+    if (!error) setDepartments((prev) => prev.map((x) => (x.id === d.id ? d : x)));
   };
 
   const deleteDepartment = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, "departments", id));
+    const { error } = await supabase.from("departments").delete().eq("id", id);
+    if (!error) {
       setDepartments((prev) => prev.filter((x) => x.id !== id));
       setTopics((prev) => prev.filter((x) => x.departmentId !== id));
       setAttendees((prev) => prev.filter((x) => x.departmentId !== id));
-    } catch (e) { console.error(e); }
+    }
   };
 
-  // ── Topics ──
-
   const addTopic = async (t: Omit<Topic, "id" | "createdAt">) => {
-    const createdAt = new Date().toISOString();
-    try {
-      const ref = await addDoc(collection(db, "topics"), {
-        departmentId: t.departmentId,
-        title: t.title,
-        subject: t.subject,
-        description: t.description,
-        date: t.date || "",
-        weekEnding: t.weekEnding || "",
-        time: t.time,
-        duration: t.duration,
-        location: t.location,
-        lessonPlanRef: t.lessonPlanRef,
-        trainer: t.trainer,
-        trainerSignature: t.trainerSignature,
-        createdAt,
-      });
-      setTopics((prev) => [...prev, { id: ref.id, ...t, createdAt }]);
-    } catch (e) { console.error(e); }
+    const { data, error } = await supabase.from("topics").insert({
+      department_id: t.departmentId || null,
+      title: t.title, subject: t.subject, description: t.description,
+      date: t.date || null, week_ending: t.weekEnding || null,
+      time: t.time, duration: t.duration, location: t.location,
+      lesson_plan_ref: t.lessonPlanRef, trainer: t.trainer, trainer_signature: t.trainerSignature,
+    }).select().single();
+    if (!error && data) setTopics((prev) => [...prev, mapTopic(data)]);
   };
 
   const updateTopic = async (t: Topic) => {
-    try {
-      await updateDoc(doc(db, "topics", t.id), {
-        title: t.title,
-        subject: t.subject,
-        description: t.description,
-        date: t.date || "",
-        weekEnding: t.weekEnding || "",
-        time: t.time,
-        duration: t.duration,
-        location: t.location,
-        lessonPlanRef: t.lessonPlanRef,
-        trainer: t.trainer,
-        trainerSignature: t.trainerSignature,
-      });
-      setTopics((prev) => prev.map((x) => (x.id === t.id ? t : x)));
-    } catch (e) { console.error(e); }
+    const { error } = await supabase.from("topics").update({
+      title: t.title, subject: t.subject, description: t.description,
+      date: t.date || null, week_ending: t.weekEnding || null,
+      time: t.time, duration: t.duration, location: t.location,
+      lesson_plan_ref: t.lessonPlanRef, trainer: t.trainer, trainer_signature: t.trainerSignature,
+    }).eq("id", t.id);
+    if (!error) setTopics((prev) => prev.map((x) => (x.id === t.id ? t : x)));
   };
 
   const deleteTopic = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, "topics", id));
+    const { error } = await supabase.from("topics").delete().eq("id", id);
+    if (!error) {
       setTopics((prev) => prev.filter((x) => x.id !== id));
       setAttendees((prev) => prev.filter((x) => x.topicId !== id));
-    } catch (e) { console.error(e); }
+    }
   };
 
-  // ── Attendees ──
-
   const addAttendee = async (a: Omit<Attendee, "id" | "signedAt">) => {
-    const signedAt = new Date().toISOString();
-    try {
-      const ref = await addDoc(collection(db, "attendees"), {
-        topicId: a.topicId,
-        departmentId: a.departmentId,
-        name: a.name,
-        employeeId: a.employeeId,
-        jobTitle: a.jobTitle,
-        gender: a.gender,
-        equity: a.equity,
-        passportId: a.passportId,
-        ageGroup: a.ageGroup,
-        disabled: a.disabled,
-        learnership: a.learnership,
-        signature: a.signature,
-        signedAt,
-      });
-      setAttendees((prev) => [...prev, { id: ref.id, ...a, signedAt }]);
-    } catch (e) { console.error(e); }
+    const { data, error } = await supabase.from("attendees").insert({
+      topic_id: a.topicId || null, department_id: a.departmentId || null,
+      name: a.name, employee_id: a.employeeId, job_title: a.jobTitle,
+      gender: a.gender, equity: a.equity, passport_id: a.passportId,
+      age_group: a.ageGroup, disabled: a.disabled, learnership: a.learnership, signature: a.signature,
+    }).select().single();
+    if (!error && data) setAttendees((prev) => [...prev, mapAttendee(data)]);
   };
 
   const deleteAttendee = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, "attendees", id));
-      setAttendees((prev) => prev.filter((x) => x.id !== id));
-    } catch (e) { console.error(e); }
+    const { error } = await supabase.from("attendees").delete().eq("id", id);
+    if (!error) setAttendees((prev) => prev.filter((x) => x.id !== id));
   };
 
   return (
-    <StoreContext.Provider
-      value={{
-        departments, topics, attendees, loading, error,
-        addDepartment, updateDepartment, deleteDepartment,
-        addTopic, updateTopic, deleteTopic,
-        addAttendee, deleteAttendee,
-      }}
-    >
+    <StoreContext.Provider value={{
+      departments, topics, attendees, loading, error,
+      addDepartment, updateDepartment, deleteDepartment,
+      addTopic, updateTopic, deleteTopic,
+      addAttendee, deleteAttendee,
+    }}>
       {children}
     </StoreContext.Provider>
   );

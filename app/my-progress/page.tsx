@@ -18,7 +18,7 @@ export default function MyProgressPage() {
       if (role === "dept_head" && departmentId) {
         r = await getDepartmentResults(departmentId);
       } else {
-        r = await getMyResults(user.uid);
+        r = await getMyResults(user.id);
       }
       setResults(r);
       setLoading(false);

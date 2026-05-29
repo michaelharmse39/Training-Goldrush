@@ -1,27 +1,23 @@
-import { db } from "./firebase";
-import {
-  collection, getDocs, addDoc, deleteDoc,
-  doc, query, orderBy, DocumentData,
-} from "firebase/firestore";
+import { supabase } from "./supabase";
 import { Manual } from "./types";
 
-function mapManual(id: string, r: DocumentData): Manual {
+function mapManual(r: Record<string, unknown>): Manual {
   return {
-    id,
-    title: r.title ?? "",
-    departmentId: r.departmentId ?? "",
-    topicId: r.topicId ?? "",
-    fileUrl: r.fileUrl ?? "",
-    fileName: r.fileName ?? "",
-    fileSize: r.fileSize ?? 0,
-    publicId: r.publicId ?? "",
-    uploadedAt: r.uploadedAt ?? "",
+    id: r.id as string,
+    title: r.title as string ?? "",
+    departmentId: r.department_id as string ?? "",
+    topicId: r.topic_id as string ?? "",
+    fileUrl: r.file_url as string ?? "",
+    fileName: r.file_name as string ?? "",
+    fileSize: r.file_size as number ?? 0,
+    publicId: r.public_id as string ?? "",
+    uploadedAt: r.uploaded_at as string ?? "",
   };
 }
 
 export async function getManuals(): Promise<Manual[]> {
-  const snap = await getDocs(query(collection(db, "manuals"), orderBy("uploadedAt", "desc")));
-  return snap.docs.map((d) => mapManual(d.id, d.data()));
+  const { data } = await supabase.from("manuals").select("*").order("uploaded_at", { ascending: false });
+  return (data ?? []).map(mapManual);
 }
 
 export async function uploadManual(
@@ -35,33 +31,21 @@ export async function uploadManual(
   const uploadData = await uploadRes.json();
   if (!uploadRes.ok) throw new Error(uploadData.error ?? "Upload failed");
 
-  const uploadedAt = new Date().toISOString();
-  const docRef = await addDoc(collection(db, "manuals"), {
+  const { data } = await supabase.from("manuals").insert({
     title: meta.title,
-    departmentId: meta.departmentId,
-    topicId: meta.topicId,
-    fileUrl: uploadData.url,
-    fileName: uploadData.fileName,
-    fileSize: uploadData.fileSize,
-    publicId: uploadData.publicId,
-    uploadedAt,
-  });
+    department_id: meta.departmentId || null,
+    topic_id: meta.topicId || null,
+    file_url: uploadData.url,
+    file_name: uploadData.fileName,
+    file_size: uploadData.fileSize,
+    public_id: uploadData.publicId,
+  }).select().single();
 
-  return {
-    id: docRef.id,
-    title: meta.title,
-    departmentId: meta.departmentId,
-    topicId: meta.topicId,
-    fileUrl: uploadData.url,
-    fileName: uploadData.fileName,
-    fileSize: uploadData.fileSize,
-    publicId: uploadData.publicId,
-    uploadedAt,
-  };
+  return mapManual(data!);
 }
 
 export async function deleteManual(id: string, publicId?: string): Promise<void> {
-  await deleteDoc(doc(db, "manuals", id));
+  await supabase.from("manuals").delete().eq("id", id);
   if (publicId) {
     try {
       await fetch("/api/upload", {

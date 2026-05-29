@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import sgMail from "@sendgrid/mail";
 
 function generateOtp(): string {
@@ -16,7 +16,6 @@ async function sendEmail(to: string, otp: string) {
   }
 
   sgMail.setApiKey(apiKey);
-
   await sgMail.send({
     from,
     to,
@@ -41,10 +40,10 @@ export async function POST(req: NextRequest) {
   }
 
   const otp = generateOtp();
-  const expiresAt = Date.now() + 10 * 60 * 1000;
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-  const key = email.toLowerCase().replace(/[^a-z0-9]/g, "_");
-  await adminDb.collection("pendingOtps").doc(key).set({ email, otp, expiresAt });
+  await supabaseAdmin.from("otp_codes").delete().eq("email", email.toLowerCase());
+  await supabaseAdmin.from("otp_codes").insert({ email: email.toLowerCase(), otp, expires_at: expiresAt });
 
   try {
     await sendEmail(email, otp);

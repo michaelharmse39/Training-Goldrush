@@ -1,12 +1,7 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import {
-  User, onAuthStateChanged,
-  signInWithEmailAndPassword, signOut as firebaseSignOut,
-  sendPasswordResetEmail,
-} from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, db } from "./firebase";
+import { User } from "@supabase/supabase-js";
+import { supabase } from "./supabase";
 
 export type Role = "admin" | "dept_head" | "staff" | "viewer";
 export type PendingStep = "setup-totp" | "verify-totp" | null;
@@ -32,43 +27,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [pendingStep, setPendingStep] = useState<PendingStep>(null);
 
-  useEffect(() => {
-    if (!auth) { setLoading(false); return; }
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      try {
-        if (u) {
-          const snap = await getDoc(doc(db, "users", u.uid));
-          if (snap.exists()) {
-            const data = snap.data();
-            setRole((data.role as Role) ?? "staff");
-            setDepartmentId(data.departmentId ?? null);
+  async function loadProfile(u: User) {
+    const { data } = await supabase
+      .from("users")
+      .select("role, department_id, approved, self_registered, totp_enabled")
+      .eq("id", u.id)
+      .single();
 
-            // Self-registered users must go through TOTP
-            if (data.selfRegistered) {
-              const sessionKey = `totp_${u.uid}`;
-              const verified =
-                typeof window !== "undefined" &&
-                sessionStorage.getItem(sessionKey) === "1";
-              if (!verified) {
-                setPendingStep(data.totpEnabled ? "verify-totp" : "setup-totp");
-              } else {
-                setPendingStep(null);
-              }
-            } else {
-              setPendingStep(null);
-            }
-          } else {
-            // Bootstrap: first user becomes admin
-            await setDoc(doc(db, "users", u.uid), {
-              role: "admin",
-              email: u.email,
-              approved: true,
-            });
-            setRole("admin");
-            setDepartmentId(null);
-            setPendingStep(null);
-          }
-          setUser(u);
+    if (data) {
+      setRole((data.role as Role) ?? "staff");
+      setDepartmentId(data.department_id ?? null);
+
+      if (data.self_registered) {
+        const sessionKey = `totp_${u.id}`;
+        const verified = typeof window !== "undefined" && sessionStorage.getItem(sessionKey) === "1";
+        setPendingStep(verified ? null : data.totp_enabled ? "verify-totp" : "setup-totp");
+      } else {
+        setPendingStep(null);
+      }
+    }
+  }
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      try {
+        if (session?.user) {
+          await loadProfile(session.user);
+          setUser(session.user);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        if (session?.user) {
+          await loadProfile(session.user);
+          setUser(session.user);
         } else {
           setUser(null);
           setRole(null);
@@ -84,36 +82,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     });
-    return unsub;
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string): Promise<string | null> => {
-    if (!auth) return "Authentication is not configured.";
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      const snap = await getDoc(doc(db, "users", cred.user.uid));
-      if (snap.exists() && snap.data().approved === false) {
-        await firebaseSignOut(auth);
-        return "Your account is awaiting approval by an administrator.";
-      }
-      return null;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Sign in failed";
-      if (
-        msg.includes("invalid-credential") ||
-        msg.includes("wrong-password") ||
-        msg.includes("user-not-found") ||
-        msg.includes("INVALID_LOGIN_CREDENTIALS")
-      ) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      if (error.message.toLowerCase().includes("invalid") || error.message.toLowerCase().includes("credentials")) {
         return "Invalid email or password.";
       }
-      return msg;
+      return error.message;
     }
+    if (data.user) {
+      const { data: profile } = await supabase.from("users").select("approved").eq("id", data.user.id).single();
+      if (profile && profile.approved === false) {
+        await supabase.auth.signOut();
+        return "Your account is awaiting approval by an administrator.";
+      }
+    }
+    return null;
   };
 
   const signOut = async () => {
-    if (user) sessionStorage.removeItem(`totp_${user.uid}`);
-    if (auth) await firebaseSignOut(auth);
+    if (user) sessionStorage.removeItem(`totp_${user.id}`);
+    await supabase.auth.signOut();
     setUser(null);
     setRole(null);
     setDepartmentId(null);
@@ -121,24 +114,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const completeTotpStep = useCallback(() => {
-    if (user) sessionStorage.setItem(`totp_${user.uid}`, "1");
+    if (user) sessionStorage.setItem(`totp_${user.id}`, "1");
     setPendingStep(null);
   }, [user]);
 
   const sendPasswordReset = async (email: string): Promise<string | null> => {
-    if (!auth) return "Password reset is not available.";
-    try {
-      await sendPasswordResetEmail(auth, email);
-      return null;
-    } catch (e: unknown) {
-      return e instanceof Error ? e.message : "Failed to send reset email";
-    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${typeof window !== "undefined" ? window.location.origin : ""}/update-password`,
+    });
+    return error ? error.message : null;
   };
 
   return (
-    <AuthContext.Provider
-      value={{ user, role, departmentId, loading, pendingStep, signIn, signOut, completeTotpStep, sendPasswordReset }}
-    >
+    <AuthContext.Provider value={{ user, role, departmentId, loading, pendingStep, signIn, signOut, completeTotpStep, sendPasswordReset }}>
       {children}
     </AuthContext.Provider>
   );

@@ -317,7 +317,7 @@ export default function UsersPage() {
                     <tr key={u.uid} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-3 text-gray-900">
                         {u.email}
-                        {u.uid === currentUser?.uid && (
+                        {u.uid === currentUser?.id && (
                           <span className="ml-2 text-xs text-gray-400">(you)</span>
                         )}
                       </td>
@@ -385,7 +385,7 @@ export default function UsersPage() {
                               {saving ? "Saving…" : "Save"}
                             </button>
                           )}
-                          {u.uid !== currentUser?.uid && (
+                          {u.uid !== currentUser?.id && (
                             <button
                               onClick={() => handleDelete(u.uid)}
                               className="text-gray-400 hover:text-red-500 transition-colors"

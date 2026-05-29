@@ -2,8 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GraduationCap, ArrowLeft, Mail, Lock, CheckCircle, Eye, EyeOff } from "lucide-react";
-import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 
 type Step = "form" | "otp" | "creating";
@@ -21,19 +20,12 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Step 1: validate form + send OTP
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
+    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
+    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
 
     setLoading(true);
     const res = await fetch("/api/auth/send-otp", {
@@ -44,15 +36,10 @@ export default function SignupPage() {
     const data = await res.json();
     setLoading(false);
 
-    if (!res.ok) {
-      setError(data.error ?? "Failed to send verification code.");
-      return;
-    }
-
+    if (!res.ok) { setError(data.error ?? "Failed to send verification code."); return; }
     setStep("otp");
   };
 
-  // Step 2: verify OTP, create account, complete signup
   const handleVerifyAndCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -71,24 +58,21 @@ export default function SignupPage() {
       return;
     }
 
-    // Create Firebase auth account
-    let firebaseUser;
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      firebaseUser = cred.user;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to create account.";
+    // Create Supabase auth account
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({ email, password });
+    if (signUpError || !authData.user) {
       setError(
-        msg.includes("email-already-in-use")
+        signUpError?.message.includes("already registered")
           ? "An account with this email already exists."
-          : msg
+          : (signUpError?.message ?? "Failed to create account.")
       );
       setLoading(false);
       return;
     }
 
-    // Create Firestore user record via API
-    const token = await firebaseUser.getIdToken();
+    // Create user profile record via API
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
     const completeRes = await fetch("/api/auth/complete-signup", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -101,7 +85,7 @@ export default function SignupPage() {
     }
 
     // Sign the user out — they must wait for approval
-    await signOut(auth);
+    await supabase.auth.signOut();
     setLoading(false);
     router.replace("/pending-approval");
   };
@@ -129,54 +113,27 @@ export default function SignupPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          {/* ── Step 1: Registration form ── */}
           {step === "form" && (
             <>
-              <Link
-                href="/login"
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 mb-4 transition-colors"
-              >
+              <Link href="/login" className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 mb-4 transition-colors">
                 <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
               </Link>
               <h1 className="text-lg font-semibold text-gray-900 mb-1">Create account</h1>
-              <p className="text-sm text-gray-500 mb-5">
-                Use your work email. A verification code will be sent to confirm it.
-              </p>
+              <p className="text-sm text-gray-500 mb-5">Use your work email. A verification code will be sent to confirm it.</p>
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Work email</label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      autoComplete="email"
-                      placeholder="you@goldrushgroup.co.za"
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" placeholder="you@goldrushgroup.co.za" className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      placeholder="At least 6 characters"
-                      className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      tabIndex={-1}
-                    >
+                    <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} placeholder="At least 6 characters" className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
@@ -185,107 +142,56 @@ export default function SignupPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      placeholder="Same password again"
-                      className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      tabIndex={-1}
-                    >
+                    <input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required placeholder="Same password again" className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
                       {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
-                {error && (
-                  <p className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-                )}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                >
+                {error && <p className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+                <button type="submit" disabled={loading} className="w-full py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">
                   {loading ? "Sending code…" : "Send verification code"}
                 </button>
               </form>
             </>
           )}
 
-          {/* ── Step 2: OTP entry ── */}
           {step === "otp" && (
             <>
-              <button
-                onClick={() => { setStep("form"); setError(null); setOtp(""); }}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 mb-4 transition-colors"
-              >
+              <button onClick={() => { setStep("form"); setError(null); setOtp(""); }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 mb-4 transition-colors">
                 <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
               <h1 className="text-lg font-semibold text-gray-900 mb-1">Verify your email</h1>
-              <p className="text-sm text-gray-500 mb-5">
-                Enter the 6-digit code sent to <span className="font-medium text-gray-700">{email}</span>
-              </p>
+              <p className="text-sm text-gray-500 mb-5">Enter the 6-digit code sent to <span className="font-medium text-gray-700">{email}</span></p>
               <form onSubmit={handleVerifyAndCreate} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Verification code</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                    required
-                    placeholder="6-digit code"
-                    autoFocus
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center tracking-widest text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <input type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} required placeholder="6-digit code" autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-lg text-lg text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
-                {error && (
-                  <p className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-                )}
-                <button
-                  type="submit"
-                  disabled={loading || otp.length < 6}
-                  className="w-full py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                >
+                {error && <p className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+                <button type="submit" disabled={loading || otp.length < 6} className="w-full py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">
                   {loading ? "Creating account…" : "Verify & Create Account"}
                 </button>
               </form>
               <p className="text-center text-xs text-gray-500 mt-4">
                 Didn&apos;t receive it?{" "}
-                <button
-                  onClick={resendOtp}
-                  disabled={loading}
-                  className="text-indigo-600 hover:underline disabled:opacity-50"
-                >
-                  Resend code
-                </button>
+                <button onClick={resendOtp} disabled={loading} className="text-indigo-600 hover:underline disabled:opacity-50">Resend code</button>
               </p>
             </>
           )}
         </div>
 
-        {/* Progress indicator */}
         <div className="flex items-center justify-center gap-2 mt-6">
           <div className={`w-2 h-2 rounded-full ${step === "form" ? "bg-indigo-600" : "bg-indigo-300"}`} />
           <div className={`w-2 h-2 rounded-full ${step === "otp" ? "bg-indigo-600" : "bg-gray-200"}`} />
           <div className="w-2 h-2 rounded-full bg-gray-200" />
         </div>
-        <p className="text-center text-xs text-gray-400 mt-2">
-          {step === "form" ? "Enter your details" : "Verify email"}
-        </p>
+        <p className="text-center text-xs text-gray-400 mt-2">{step === "form" ? "Enter your details" : "Verify email"}</p>
 
         <div className="mt-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
           <div className="flex items-start gap-2">
             <CheckCircle className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-indigo-700">
-              After registration, your account will require approval from your department head or administrator before you can log in.
-            </p>
+            <p className="text-xs text-indigo-700">After registration, your account will require approval from your department head or administrator before you can log in.</p>
           </div>
         </div>
       </div>

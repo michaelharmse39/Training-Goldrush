@@ -15,7 +15,9 @@ export default function VerifyTotpPage() {
     setLoading(true);
     setError(null);
 
-    const token = await user.getIdToken();
+    const { supabase } = await import("@/lib/supabase");
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
     const res = await fetch("/api/totp/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

@@ -61,9 +61,9 @@ export default function TakeAssessmentPage({
     const res = await submitResult({
       assessmentId: assessment.id,
       assessmentTitle: assessment.title,
-      userId: user.uid,
+      userId: user.id,
       userEmail: user.email ?? "",
-      userName: user.displayName ?? "",
+      userName: user.user_metadata?.full_name ?? user.email ?? "",
       departmentId: departmentId ?? "",
       score,
       passed,

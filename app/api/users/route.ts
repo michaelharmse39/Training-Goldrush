@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import sgMail from "@sendgrid/mail";
 
 function randomPassword() {
@@ -15,15 +15,10 @@ async function sendWelcomeEmail(to: string, resetLink: string) {
     return;
   }
 
-  // Parse "Name <email>" format into SendGrid object format
   const match = fromRaw.match(/^(.*?)\s*<(.+?)>$/);
-  const from = match
-    ? { name: match[1].trim(), email: match[2].trim() }
-    : { email: fromRaw.trim() };
+  const from = match ? { name: match[1].trim(), email: match[2].trim() } : { email: fromRaw.trim() };
 
-  console.log(`[SendGrid] Sending welcome email to ${to} from`, JSON.stringify(from));
   sgMail.setApiKey(apiKey);
-
   await sgMail.send({
     from,
     to,
@@ -44,66 +39,70 @@ async function sendWelcomeEmail(to: string, resetLink: string) {
 
 export async function GET() {
   try {
-    const listResult = await adminAuth.listUsers();
-    const users = await Promise.all(
-      listResult.users.map(async (user) => {
-        const snap = await adminDb.collection("users").doc(user.uid).get();
-        const data = snap.data() ?? {};
-        return {
-          uid: user.uid,
-          email: user.email ?? "",
-          role: data.role ?? "staff",
-          departmentId: data.departmentId ?? "",
-          approved: data.approved !== false,
-          selfRegistered: data.selfRegistered ?? false,
-          totpEnabled: data.totpEnabled ?? false,
-          createdAt: user.metadata.creationTime,
-        };
-      })
-    );
+    const [{ data: authData }, { data: profiles }] = await Promise.all([
+      supabaseAdmin.auth.admin.listUsers(),
+      supabaseAdmin.from("users").select("*"),
+    ]);
+
+    const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+
+    const users = (authData?.users ?? []).map((u) => {
+      const p = profileMap.get(u.id) ?? {};
+      return {
+        uid: u.id,
+        email: u.email ?? "",
+        role: p.role ?? "staff",
+        departmentId: p.department_id ?? "",
+        approved: p.approved !== false,
+        selfRegistered: p.self_registered ?? false,
+        totpEnabled: p.totp_enabled ?? false,
+        createdAt: u.created_at,
+      };
+    });
+
     return NextResponse.json(users);
   } catch (e: unknown) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const { email, role, departmentId } = await request.json();
-    const user = await adminAuth.createUser({ email, password: randomPassword() });
-    await adminDb.collection("users").doc(user.uid).set({
-      role,
+
+    const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      departmentId: departmentId ?? "",
+      password: randomPassword(),
+      email_confirm: true,
+    });
+    if (createError) throw createError;
+
+    const uid = created.user.id;
+    await supabaseAdmin.from("users").insert({
+      id: uid,
+      email,
+      role,
+      department_id: departmentId || null,
       approved: true,
+      self_registered: false,
+      totp_enabled: false,
     });
 
-    // Send password setup email
     try {
-      const resetLink = await adminAuth.generatePasswordResetLink(email);
-      await sendWelcomeEmail(email, resetLink);
+      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/update-password` },
+      });
+      if (linkData?.properties?.action_link) {
+        await sendWelcomeEmail(email, linkData.properties.action_link);
+      }
     } catch (emailErr: unknown) {
-      const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-      const body = (emailErr as { response?: { body?: unknown } })?.response?.body;
-      console.error("Failed to send welcome email:", msg, body ? JSON.stringify(body) : "");
+      console.error("Failed to send welcome email:", emailErr instanceof Error ? emailErr.message : emailErr);
     }
 
-    return NextResponse.json({
-      uid: user.uid,
-      email,
-      role,
-      departmentId: departmentId ?? "",
-      approved: true,
-      selfRegistered: false,
-      totpEnabled: false,
-    });
+    return NextResponse.json({ uid, email, role, departmentId: departmentId ?? "", approved: true, selfRegistered: false, totpEnabled: false });
   } catch (e: unknown) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }
 }

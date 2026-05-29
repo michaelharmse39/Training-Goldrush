@@ -18,7 +18,9 @@ export default function SetupTotpPage() {
   useEffect(() => {
     if (!user) return;
     const setup = async () => {
-      const token = await user.getIdToken();
+      const { supabase } = await import("@/lib/supabase");
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const res = await fetch("/api/totp/setup", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -41,7 +43,9 @@ export default function SetupTotpPage() {
     setLoading(true);
     setError(null);
 
-    const token = await user.getIdToken();
+    const { supabase } = await import("@/lib/supabase");
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
     const res = await fetch("/api/totp/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

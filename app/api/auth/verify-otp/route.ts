@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
   const { email, otp } = await req.json();
@@ -7,17 +7,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email and OTP are required" }, { status: 400 });
   }
 
-  const key = email.toLowerCase().replace(/[^a-z0-9]/g, "_");
-  const snap = await adminDb.collection("pendingOtps").doc(key).get();
+  const { data, error } = await supabaseAdmin
+    .from("otp_codes")
+    .select("*")
+    .eq("email", email.toLowerCase())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
 
-  if (!snap.exists) {
+  if (error || !data) {
     return NextResponse.json({ error: "No verification code found for this email. Please request a new one." }, { status: 400 });
   }
 
-  const data = snap.data()!;
-
-  if (Date.now() > data.expiresAt) {
-    await snap.ref.delete();
+  if (new Date() > new Date(data.expires_at)) {
+    await supabaseAdmin.from("otp_codes").delete().eq("id", data.id);
     return NextResponse.json({ error: "Verification code has expired. Please request a new one." }, { status: 400 });
   }
 
@@ -25,8 +28,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Incorrect verification code. Please try again." }, { status: 400 });
   }
 
-  // OTP is valid — delete it so it can't be reused
-  await snap.ref.delete();
-
+  await supabaseAdmin.from("otp_codes").delete().eq("id", data.id);
   return NextResponse.json({ verified: true });
 }

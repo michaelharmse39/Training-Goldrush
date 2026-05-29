@@ -1,94 +1,93 @@
-import { db } from "./firebase";
-import {
-  collection, getDocs, addDoc, updateDoc, deleteDoc,
-  doc, query, orderBy, where, getDoc, DocumentData,
-} from "firebase/firestore";
+import { supabase } from "./supabase";
 import { Assessment, AssessmentResult } from "./types";
 
-function mapAssessment(id: string, r: DocumentData): Assessment {
+function mapAssessment(r: Record<string, unknown>): Assessment {
   return {
-    id,
-    title: r.title ?? "",
-    description: r.description ?? "",
-    departmentId: r.departmentId ?? "",
-    topicId: r.topicId ?? "",
-    timeLimit: r.timeLimit ?? 0,
-    passMark: r.passMark ?? 70,
-    manualId: r.manualId ?? "",
-    questions: r.questions ?? [],
-    isActive: r.isActive ?? true,
-    createdAt: r.createdAt ?? "",
+    id: r.id as string,
+    title: r.title as string ?? "",
+    description: r.description as string ?? "",
+    departmentId: r.department_id as string ?? "",
+    topicId: r.topic_id as string ?? "",
+    timeLimit: r.time_limit as number ?? 0,
+    passMark: r.pass_mark as number ?? 70,
+    manualId: r.manual_id as string ?? "",
+    questions: (r.questions as Assessment["questions"]) ?? [],
+    isActive: r.is_active as boolean ?? true,
+    createdAt: r.created_at as string ?? "",
   };
 }
 
-function mapResult(id: string, r: DocumentData): AssessmentResult {
+function mapResult(r: Record<string, unknown>): AssessmentResult {
   return {
-    id,
-    assessmentId: r.assessmentId ?? "",
-    assessmentTitle: r.assessmentTitle ?? "",
-    userId: r.userId ?? "",
-    userEmail: r.userEmail ?? "",
-    userName: r.userName ?? "",
-    departmentId: r.departmentId ?? "",
-    score: r.score ?? 0,
-    passed: r.passed ?? false,
-    answers: r.answers ?? [],
-    timeSpent: r.timeSpent ?? 0,
-    completedAt: r.completedAt ?? "",
+    id: r.id as string,
+    assessmentId: r.assessment_id as string ?? "",
+    assessmentTitle: r.assessment_title as string ?? "",
+    userId: r.user_id as string ?? "",
+    userEmail: r.user_email as string ?? "",
+    userName: r.user_name as string ?? "",
+    departmentId: r.department_id as string ?? "",
+    score: r.score as number ?? 0,
+    passed: r.passed as boolean ?? false,
+    answers: (r.answers as number[]) ?? [],
+    timeSpent: r.time_spent as number ?? 0,
+    completedAt: r.completed_at as string ?? "",
   };
 }
 
 export async function getAssessments(): Promise<Assessment[]> {
-  const snap = await getDocs(query(collection(db, "assessments"), orderBy("createdAt", "desc")));
-  return snap.docs.map((d) => mapAssessment(d.id, d.data()));
+  const { data } = await supabase.from("assessments").select("*").order("created_at", { ascending: false });
+  return (data ?? []).map(mapAssessment);
 }
 
 export async function getAssessmentById(id: string): Promise<Assessment | null> {
-  const snap = await getDoc(doc(db, "assessments", id));
-  if (!snap.exists()) return null;
-  return mapAssessment(snap.id, snap.data());
+  const { data } = await supabase.from("assessments").select("*").eq("id", id).single();
+  return data ? mapAssessment(data) : null;
 }
 
 export async function createAssessment(a: Omit<Assessment, "id" | "createdAt">): Promise<Assessment> {
-  const createdAt = new Date().toISOString();
-  const ref = await addDoc(collection(db, "assessments"), { ...a, createdAt });
-  return { id: ref.id, ...a, createdAt };
+  const { data } = await supabase.from("assessments").insert({
+    title: a.title, description: a.description,
+    department_id: a.departmentId || null, topic_id: a.topicId || null,
+    time_limit: a.timeLimit, pass_mark: a.passMark,
+    manual_id: a.manualId || null, questions: a.questions, is_active: a.isActive,
+  }).select().single();
+  return mapAssessment(data!);
 }
 
 export async function updateAssessment(a: Assessment): Promise<void> {
-  const { id, ...data } = a;
-  await updateDoc(doc(db, "assessments", id), data);
+  await supabase.from("assessments").update({
+    title: a.title, description: a.description,
+    department_id: a.departmentId || null, topic_id: a.topicId || null,
+    time_limit: a.timeLimit, pass_mark: a.passMark,
+    manual_id: a.manualId || null, questions: a.questions, is_active: a.isActive,
+  }).eq("id", a.id);
 }
 
 export async function deleteAssessment(id: string): Promise<void> {
-  await deleteDoc(doc(db, "assessments", id));
+  await supabase.from("assessments").delete().eq("id", id);
 }
 
 export async function submitResult(r: Omit<AssessmentResult, "id">): Promise<AssessmentResult> {
-  const ref = await addDoc(collection(db, "assessmentResults"), r);
-  return { id: ref.id, ...r };
+  const { data } = await supabase.from("assessment_results").insert({
+    assessment_id: r.assessmentId, assessment_title: r.assessmentTitle,
+    user_id: r.userId, user_email: r.userEmail, user_name: r.userName,
+    department_id: r.departmentId || null, score: r.score, passed: r.passed,
+    answers: r.answers, time_spent: r.timeSpent, completed_at: r.completedAt,
+  }).select().single();
+  return mapResult(data!);
 }
 
 export async function getResultsForAssessment(assessmentId: string): Promise<AssessmentResult[]> {
-  const snap = await getDocs(
-    query(collection(db, "assessmentResults"), where("assessmentId", "==", assessmentId))
-  );
-  const results = snap.docs.map((d) => mapResult(d.id, d.data()));
-  return results.sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+  const { data } = await supabase.from("assessment_results").select("*").eq("assessment_id", assessmentId).order("completed_at", { ascending: false });
+  return (data ?? []).map(mapResult);
 }
 
 export async function getMyResults(userId: string): Promise<AssessmentResult[]> {
-  const snap = await getDocs(
-    query(collection(db, "assessmentResults"), where("userId", "==", userId))
-  );
-  const results = snap.docs.map((d) => mapResult(d.id, d.data()));
-  return results.sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+  const { data } = await supabase.from("assessment_results").select("*").eq("user_id", userId).order("completed_at", { ascending: false });
+  return (data ?? []).map(mapResult);
 }
 
 export async function getDepartmentResults(departmentId: string): Promise<AssessmentResult[]> {
-  const snap = await getDocs(
-    query(collection(db, "assessmentResults"), where("departmentId", "==", departmentId))
-  );
-  const results = snap.docs.map((d) => mapResult(d.id, d.data()));
-  return results.sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+  const { data } = await supabase.from("assessment_results").select("*").eq("department_id", departmentId).order("completed_at", { ascending: false });
+  return (data ?? []).map(mapResult);
 }

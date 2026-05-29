@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function DELETE(
   _req: Request,
@@ -7,14 +7,11 @@ export async function DELETE(
 ) {
   try {
     const { uid } = await params;
-    await adminAuth.deleteUser(uid);
-    await adminDb.collection("users").doc(uid).delete();
+    await supabaseAdmin.auth.admin.deleteUser(uid);
+    await supabaseAdmin.from("users").delete().eq("id", uid);
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }
 }
 
@@ -27,16 +24,13 @@ export async function PATCH(
     const body = await request.json();
     const update: Record<string, unknown> = {};
     if (body.role !== undefined) update.role = body.role;
-    if (body.departmentId !== undefined) update.departmentId = body.departmentId;
+    if (body.departmentId !== undefined) update.department_id = body.departmentId || null;
     if (body.approved !== undefined) update.approved = body.approved;
-    if (body.totpEnabled !== undefined) update.totpEnabled = body.totpEnabled;
-    if (body.totpSecret !== undefined) update.totpSecret = body.totpSecret;
-    await adminDb.collection("users").doc(uid).set(update, { merge: true });
+    if (body.totpEnabled !== undefined) update.totp_enabled = body.totpEnabled;
+    if (body.totpSecret !== undefined) update.totp_secret = body.totpSecret;
+    await supabaseAdmin.from("users").update(update).eq("id", uid);
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }
 }

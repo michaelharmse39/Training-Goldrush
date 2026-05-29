@@ -79,7 +79,7 @@ export default function TrainingSessionsPage() {
         const deptSessions = await getSessionsByDepartment(userDeptId ?? "");
         setSessions(deptSessions);
         if (user) {
-          const mb = await getMyBookings(user.uid);
+          const mb = await getMyBookings(user.id);
           setMyBookings(mb);
         }
       }
@@ -107,7 +107,7 @@ export default function TrainingSessionsPage() {
   const handleCreate = async () => {
     if (!formData.title.trim() || !user) return;
     setSaving(true);
-    const s = await createTrainingSession({ ...formData, createdBy: user.uid });
+    const s = await createTrainingSession({ ...formData, createdBy: user.id });
     setSessions((p) => [s, ...p]);
     setFormData({ ...EMPTY_SESSION });
     setShowForm(false);
@@ -172,8 +172,8 @@ export default function TrainingSessionsPage() {
     const booking = await createBooking({
       sessionId: bookingSessionId,
       sessionTitle: session.title,
-      userId: user.uid,
-      userName: user.displayName ?? "",
+      userId: user.id,
+      userName: user.user_metadata?.full_name ?? user.email ?? "",
       userEmail: user.email ?? "",
       departmentId: userDeptId ?? "",
       availableTimes,
