@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingStep, setPendingStep] = useState<PendingStep>(null);
 
   useEffect(() => {
+    if (!auth) { setLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
         if (u) {
