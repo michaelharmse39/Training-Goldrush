@@ -34,46 +34,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        const snap = await getDoc(doc(db, "users", u.uid));
-        if (snap.exists()) {
-          const data = snap.data();
-          setRole((data.role as Role) ?? "staff");
-          setDepartmentId(data.departmentId ?? null);
+      try {
+        if (u) {
+          const snap = await getDoc(doc(db, "users", u.uid));
+          if (snap.exists()) {
+            const data = snap.data();
+            setRole((data.role as Role) ?? "staff");
+            setDepartmentId(data.departmentId ?? null);
 
-          // Self-registered users must go through TOTP
-          if (data.selfRegistered) {
-            const sessionKey = `totp_${u.uid}`;
-            const verified =
-              typeof window !== "undefined" &&
-              sessionStorage.getItem(sessionKey) === "1";
-            if (!verified) {
-              setPendingStep(data.totpEnabled ? "verify-totp" : "setup-totp");
+            // Self-registered users must go through TOTP
+            if (data.selfRegistered) {
+              const sessionKey = `totp_${u.uid}`;
+              const verified =
+                typeof window !== "undefined" &&
+                sessionStorage.getItem(sessionKey) === "1";
+              if (!verified) {
+                setPendingStep(data.totpEnabled ? "verify-totp" : "setup-totp");
+              } else {
+                setPendingStep(null);
+              }
             } else {
               setPendingStep(null);
             }
           } else {
+            // Bootstrap: first user becomes admin
+            await setDoc(doc(db, "users", u.uid), {
+              role: "admin",
+              email: u.email,
+              approved: true,
+            });
+            setRole("admin");
+            setDepartmentId(null);
             setPendingStep(null);
           }
+          setUser(u);
         } else {
-          // Bootstrap: first user becomes admin
-          await setDoc(doc(db, "users", u.uid), {
-            role: "admin",
-            email: u.email,
-            approved: true,
-          });
-          setRole("admin");
+          setUser(null);
+          setRole(null);
           setDepartmentId(null);
           setPendingStep(null);
         }
-        setUser(u);
-      } else {
+      } catch {
         setUser(null);
         setRole(null);
         setDepartmentId(null);
         setPendingStep(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return unsub;
   }, []);

@@ -48,8 +48,11 @@ export async function POST(req: NextRequest) {
 
   try {
     await sendEmail(email, otp);
-  } catch (err) {
-    console.error("Failed to send OTP email:", err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const body = (err as { response?: { body?: unknown } })?.response?.body;
+    console.error("Failed to send OTP email:", message, body);
+    return NextResponse.json({ error: "Failed to send email", detail: message, body }, { status: 500 });
   }
 
   return NextResponse.json({ sent: true });
