@@ -88,9 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string): Promise<string | null> => {
+    if (!auth) return "Authentication is not configured.";
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      // Check approval before allowing in
       const snap = await getDoc(doc(db, "users", cred.user.uid));
       if (snap.exists() && snap.data().approved === false) {
         await firebaseSignOut(auth);
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     if (user) sessionStorage.removeItem(`totp_${user.uid}`);
-    await firebaseSignOut(auth);
+    if (auth) await firebaseSignOut(auth);
     setUser(null);
     setRole(null);
     setDepartmentId(null);
@@ -126,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const sendPasswordReset = async (email: string): Promise<string | null> => {
+    if (!auth) return "Password reset is not available.";
     try {
       await sendPasswordResetEmail(auth, email);
       return null;
