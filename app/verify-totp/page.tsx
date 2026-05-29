@@ -4,20 +4,18 @@ import { useAuth } from "@/lib/auth";
 import { ShieldCheck, Smartphone } from "lucide-react";
 
 export default function VerifyTotpPage() {
-  const { user, completeTotpStep, signOut } = useAuth();
+  const { user, accessToken, completeTotpStep, signOut } = useAuth();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !accessToken) return;
     setLoading(true);
     setError(null);
 
-    const { supabase } = await import("@/lib/supabase");
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    const token = accessToken;
     const res = await fetch("/api/totp/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

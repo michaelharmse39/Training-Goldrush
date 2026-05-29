@@ -5,7 +5,7 @@ import { Smartphone, ShieldCheck, Copy, CheckCircle } from "lucide-react";
 import Image from "next/image";
 
 export default function SetupTotpPage() {
-  const { user, completeTotpStep } = useAuth();
+  const { user, accessToken, completeTotpStep } = useAuth();
 
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
@@ -16,11 +16,9 @@ export default function SetupTotpPage() {
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !accessToken) return;
     const setup = async () => {
-      const { supabase } = await import("@/lib/supabase");
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const token = accessToken;
       const res = await fetch("/api/totp/setup", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -35,7 +33,7 @@ export default function SetupTotpPage() {
       setInitializing(false);
     };
     setup();
-  }, [user]);
+  }, [user, accessToken]);
 
   const handleConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,9 +41,7 @@ export default function SetupTotpPage() {
     setLoading(true);
     setError(null);
 
-    const { supabase } = await import("@/lib/supabase");
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    const token = accessToken;
     const res = await fetch("/api/totp/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

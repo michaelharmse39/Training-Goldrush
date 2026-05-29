@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { dbAdminUpdate, dbAdminDelete } from "@/lib/rest-admin";
 
 export async function DELETE(
   _req: Request,
@@ -7,8 +8,9 @@ export async function DELETE(
 ) {
   try {
     const { uid } = await params;
-    await supabaseAdmin.auth.admin.deleteUser(uid);
-    await supabaseAdmin.from("users").delete().eq("id", uid);
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(uid);
+    if (deleteError) throw deleteError;
+    await dbAdminDelete("users", uid);
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
@@ -21,14 +23,14 @@ export async function PATCH(
 ) {
   try {
     const { uid } = await params;
-    const body = await request.json();
+    const body = await request.json() as Record<string, unknown>;
     const update: Record<string, unknown> = {};
     if (body.role !== undefined) update.role = body.role;
     if (body.departmentId !== undefined) update.department_id = body.departmentId || null;
     if (body.approved !== undefined) update.approved = body.approved;
     if (body.totpEnabled !== undefined) update.totp_enabled = body.totpEnabled;
     if (body.totpSecret !== undefined) update.totp_secret = body.totpSecret;
-    await supabaseAdmin.from("users").update(update).eq("id", uid);
+    await dbAdminUpdate("users", uid, update);
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
