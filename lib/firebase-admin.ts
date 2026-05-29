@@ -3,23 +3,18 @@ import { Auth, getAuth } from "firebase-admin/auth";
 import { Firestore, getFirestore } from "firebase-admin/firestore";
 
 function getAdminApp() {
-  try {
-    return (
-      getApps().find((a) => a.name === "admin") ||
-      initializeApp(
-        {
-          credential: cert({
-            projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-          }),
-        },
-        "admin"
-      )
-    );
-  } catch {
-    return null;
-  }
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+  if (!projectId || !clientEmail || !privateKey) return null;
+
+  return (
+    getApps().find((a) => a.name === "admin") ||
+    initializeApp(
+      { credential: cert({ projectId, clientEmail, privateKey: privateKey.replace(/\\n/g, "\n") }) },
+      "admin"
+    )
+  );
 }
 
 const _app = getAdminApp();
